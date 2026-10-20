@@ -85,7 +85,7 @@ La verificación técnica no sustituye la evaluación epidemiológica de los mé
         bundle.writestr('LEEME.txt',public_note)
         bundle.writestr('VALIDACION.md',validation)
     deploy_zip = ROOT/'build/RERIMSS-aplicacion-PRIVADA.zip'
-    files = [ROOT/name for name in ['Dockerfile','compose.yaml','.dockerignore','.env.example','requirements.txt','GUIA-SERVIDOR.md','GUIA-COMPARTIR.md','deploy/nginx.conf.template']]
+    files = [ROOT/name for name in ['Dockerfile','compose.yaml','.dockerignore','.env.example','requirements.txt','GUIA-SERVIDOR.md','GUIA-COMPARTIR.md','GUIA-GITHUB.md','deploy/nginx.conf.template']]
     files += [path for path in (ROOT/'app').rglob('*') if path.is_file() and path.suffix in ('.py','.html') and '__pycache__' not in path.parts]
     files += [public,private,lock,*wheels]
     with zipfile.ZipFile(deploy_zip,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as bundle:

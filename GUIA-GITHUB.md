@@ -2,6 +2,12 @@
 
 GitHub guarda el código del proyecto. GitHub Pages puede mostrar la versión pública mediante un enlace HTTPS. La versión clínica necesita el servidor institucional con Docker, Nginx y cuentas; Pages no ejecuta esa aplicación.
 
+## Estado de la entrega
+
+El código y la carpeta pública se subieron a `master`. La [primera ejecución del despliegue](https://github.com/PHDHECTOR/testing/actions/runs/39470799157) se detuvo en **Configurar Pages**: GitHub devolvió `Not Found` e indicó que hay que habilitar Pages con GitHub Actions. El sitio todavía no está confirmado como publicado.
+
+Desde el entorno de desarrollo se comprobó que el acceso a `api.github.com` está bloqueado por su política de red, por lo que no se pudo activar Pages mediante la API. Puedes completar la activación directamente en GitHub con los pasos siguientes, sin compartir contraseñas ni tokens por chat.
+
 ## Primera publicación
 
 Una vez subidos los cambios al repositorio `PHDHECTOR/testing`:
