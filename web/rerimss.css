@@ -1,0 +1,36 @@
+/* Se incorpora en el HTML autocontenido; no necesita recursos externos. */
+html{scroll-behavior:smooth;scroll-padding-top:20px}
+body{background:#f7faf8;line-height:1.7;color:#263c32;font-family:Arial,"Segoe UI",sans-serif}
+div.main-container{max-width:1460px;padding-top:30px;padding-bottom:50px}
+h1.title{font-size:36px;line-height:1.2;letter-spacing:-.9px}
+h1,h2,h3,h4{scroll-margin-top:20px}
+.subtitle{font-weight:400;color:#526c5f;font-size:19px;line-height:1.5}
+#header{padding:16px 0 24px;border-bottom:1px solid #d8e6df;margin-bottom:28px}
+.tocify{border-radius:10px;background:#fff;font-size:13px}
+.tocify li{line-height:1.5}
+.tocify-item.active{background:#006847}
+.map-box{box-shadow:0 4px 20px #123c2510}
+.leaflet.html-widget{border:1px solid #d8e6df;margin:14px 0 28px;box-shadow:0 4px 20px #123c2510}
+.shared-control .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.metric-name,.metric-detail{display:block}
+.report-equation{background:#fff;border:1px solid #d8e6df;border-radius:9px;display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;padding:22px;margin:20px 0;font-size:15px}
+.fraction{display:inline-flex;flex-direction:column;text-align:center;line-height:1.7}
+.fraction>span:first-child{border-bottom:1px solid #526c5f;padding:0 8px 3px}
+.fraction>span:last-child{padding:3px 8px 0}
+.shared-control input:focus-visible,a:focus-visible{outline:3px solid #ba863b;outline-offset:4px}
+.map-summary [id$="-max-summary"]{font-weight:700;color:#004d3a}
+.leaflet-control-attribution{font-size:9px}
+@media(max-width:760px){
+ div.main-container{padding:14px 15px 35px}
+ h1.title{font-size:27px;letter-spacing:-.5px}
+ .subtitle{font-size:16px}
+ .shared-control{padding:14px}
+ .shared-control .metric-grid{grid-template-columns:1fr}
+ .report-equation{gap:10px;font-size:12px;padding:16px 10px}
+ .mini-gradient-wrap{min-width:0}
+ .leaflet.html-widget{min-height:500px!important;height:500px!important}
+ .leaflet-popup-content{max-width:calc(100vw - 100px);overflow-wrap:anywhere}
+ .leaflet-popup-content>div{min-width:0!important}
+}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+@media print{body{background:#fff}.tocify{display:none}div.main-container{max-width:none}.map-box,.shared-control{break-inside:avoid}.map-box{box-shadow:none}.leaflet-control-zoom{display:none}#header{padding-top:0}}

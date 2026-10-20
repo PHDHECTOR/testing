@@ -1,0 +1,13 @@
+**
+!requirements.txt
+!vendor/
+!vendor/wheels/
+!vendor/wheels/**
+!app/
+!app/**
+!dist/
+!dist/public/
+!dist/public/index.html
+!dist/private/
+!dist/private/index.html
+app/**/__pycache__/

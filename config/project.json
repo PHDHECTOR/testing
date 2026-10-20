@@ -1,0 +1,6 @@
+{
+  "census_file": "RESAGEBURB_01CSV20_AGS(2).xlsx",
+  "public_min_count": 5,
+  "public_rounding_base": 5,
+  "public_period_years": 5
+}

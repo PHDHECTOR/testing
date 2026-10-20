@@ -1,0 +1,2229 @@
+---
+title: "RERIMSS · Tres mapas temporales de enfermedad renal por AGEB — v6.3"
+subtitle: "Casos totales · incidencia · casos activos · controles temporales independientes · puntos clínicos"
+author: "IMSS Aguascalientes"
+output:
+  html_document:
+    self_contained: true
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    number_sections: true
+    fig_caption: true
+    df_print: paged
+    code_folding: hide
+params:
+  db_path: "RERIMSS.db"
+  geo_path: "renales_31082026.xlsx"
+  ageb_path: "2020_1_01_A (1)/2020_1_01_A.shp"
+  censo_path: "RESAGEBURB_01CSV20_AGS.xlsx"
+  anio_inicial: !r NA
+  anio_final: !r NA
+
+  # Mapa base. "osm" usa OpenStreetMap; "none" evita teselas externas.
+  basemap_mode: "osm"
+
+  # FALSE porque esta versión incluye puntos individuales y sus popups clínicos.
+  # Si este archivo se publica en shinyapps.io, se recomienda que la app sea PRIVADA.
+  public_mode: false
+
+  # Opcional: 0 muestra todos los conteos. Use 5 si desea suprimir
+  # en popup/tasa los AGEB con menos de 5 pacientes elegibles.
+  public_min_count: 0
+---
+
+<style>
+:root{
+  --imss-green:#006847;
+  --imss-green-dark:#004d3a;
+  --clinical-bg:#f7faf8;
+  --clinical-border:#d8e6df;
+  --clinical-muted:#5f6f69;
+}
+body{
+  font-size:15px;
+}
+h1,h2,h3,h4{
+  color:var(--imss-green-dark);
+}
+.callout{
+  background:var(--clinical-bg);
+  border:1px solid var(--clinical-border);
+  border-left:6px solid var(--imss-green);
+  border-radius:8px;
+  padding:14px 16px;
+  margin:14px 0 22px 0;
+}
+.map-box{
+  border:1px solid var(--clinical-border);
+  border-radius:9px;
+  background:#fff;
+  padding:10px;
+  margin:14px 0 28px 0;
+}
+.map-note{
+  color:var(--clinical-muted);
+  font-size:13px;
+  margin:7px 2px 12px 2px;
+}
+.leaflet.html-widget{
+  width:100% !important;
+  min-height:760px !important;
+  border-radius:8px;
+  overflow:hidden;
+}
+
+/* El control estándar de capas se conserva internamente porque sirve
+   para que JavaScript active una sola combinación indicador-año,
+   pero se oculta al lector. */
+.leaflet-control-layers{
+  display:none !important;
+}
+
+.rerimss-map-selector{
+  min-width:255px;
+  max-width:300px;
+  background:rgba(255,255,255,.97);
+  border:1px solid #cbdad4;
+  border-radius:8px;
+  padding:12px 13px;
+  box-shadow:0 1px 6px rgba(0,0,0,.18);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  color:#263238;
+}
+.rerimss-map-selector .selector-title{
+  color:#004d3a;
+  font-size:14px;
+  font-weight:750;
+  margin-bottom:9px;
+}
+.rerimss-map-selector label{
+  display:block;
+  font-size:11px;
+  font-weight:700;
+  color:#53645e;
+  margin:7px 0 3px 0;
+  text-transform:uppercase;
+  letter-spacing:.03em;
+}
+.rerimss-map-selector select{
+  width:100%;
+  height:34px;
+  border:1px solid #bfcfc9;
+  border-radius:5px;
+  background:#fff;
+  padding:4px 7px;
+  font-size:13px;
+  color:#263238;
+}
+.rerimss-map-selector .selector-description{
+  margin-top:9px;
+  padding-top:8px;
+  border-top:1px solid #dce7e3;
+  font-size:11.5px;
+  line-height:1.35;
+  color:#5a6964;
+}
+.rerimss-map-selector .selector-rate{
+  margin-top:8px;
+  font-size:11.5px;
+  font-weight:650;
+  color:#004d3a;
+}
+.rerimss-map-selector .gradient{
+  height:10px;
+  margin:5px 0 2px 0;
+  border-radius:5px;
+  background:linear-gradient(
+    to right,
+    #ffffcc,
+    #ffeda0,
+    #fed976,
+    #feb24c,
+    #fd8d3c,
+    #fc4e2a,
+    #e31a1c,
+    #b10026
+  );
+}
+.rerimss-map-selector .gradient-labels{
+  display:flex;
+  justify-content:space-between;
+  font-size:10px;
+  color:#66756f;
+}
+
+/* Control temporal con dos extremos */
+.rerimss-range-control{
+  width:310px;
+  background:rgba(255,255,255,.98);
+  border:1px solid #cbdad4;
+  border-radius:9px;
+  padding:12px 14px 13px 14px;
+  box-shadow:0 1px 7px rgba(0,0,0,.18);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  color:#263238;
+}
+.rerimss-range-control .control-title{
+  color:#004d3a;
+  font-size:14px;
+  font-weight:750;
+  margin-bottom:4px;
+}
+.rerimss-range-control .control-subtitle{
+  color:#64736e;
+  font-size:11px;
+  line-height:1.3;
+  margin-bottom:9px;
+}
+.rerimss-range-control .range-values{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  font-size:12px;
+  margin-bottom:2px;
+}
+.rerimss-range-control .year-value{
+  color:#004d3a;
+  font-size:15px;
+  font-weight:750;
+}
+.rerimss-range-control .range-shell{
+  position:relative;
+  height:40px;
+  margin:0 4px 4px 4px;
+}
+.rerimss-range-control .range-track{
+  position:absolute;
+  left:0;
+  right:0;
+  top:17px;
+  height:6px;
+  border-radius:4px;
+  background:#d7e0dc;
+}
+.rerimss-range-control .range-fill{
+  position:absolute;
+  top:17px;
+  height:6px;
+  border-radius:4px;
+  background:#006847;
+}
+.rerimss-range-control input[type=range]{
+  -webkit-appearance:none;
+  appearance:none;
+  position:absolute;
+  left:0;
+  top:4px;
+  width:100%;
+  height:30px;
+  margin:0;
+  padding:0;
+  background:transparent;
+  pointer-events:none;
+}
+.rerimss-range-control .start-range{z-index:3;}
+.rerimss-range-control .end-range{z-index:4;}
+.rerimss-range-control input[type=range]::-webkit-slider-runnable-track{
+  height:6px;
+  background:transparent;
+}
+.rerimss-range-control input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  appearance:none;
+  width:18px;
+  height:18px;
+  margin-top:-6px;
+  border-radius:50%;
+  border:2px solid #fff;
+  background:#006847;
+  box-shadow:0 0 0 1px #004d3a;
+  cursor:pointer;
+  pointer-events:auto;
+}
+.rerimss-range-control input[type=range]::-moz-range-track{
+  height:6px;
+  background:transparent;
+  border:0;
+}
+.rerimss-range-control input[type=range]::-moz-range-thumb{
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  border:2px solid #fff;
+  background:#006847;
+  box-shadow:0 0 0 1px #004d3a;
+  cursor:pointer;
+  pointer-events:auto;
+}
+.rerimss-range-control .stats{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:7px;
+  margin-top:8px;
+}
+.rerimss-range-control .stat-box{
+  background:#f5f9f7;
+  border:1px solid #dce8e3;
+  border-radius:6px;
+  padding:7px 8px;
+}
+.rerimss-range-control .stat-label{
+  display:block;
+  color:#64736e;
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:.025em;
+}
+.rerimss-range-control .stat-value{
+  display:block;
+  color:#004d3a;
+  font-size:14px;
+  font-weight:750;
+  margin-top:2px;
+}
+.rerimss-range-control .legend-title{
+  margin-top:9px;
+  padding-top:8px;
+  border-top:1px solid #dce7e3;
+  font-size:11px;
+  font-weight:700;
+  color:#004d3a;
+}
+.rerimss-range-control .gradient{
+  height:10px;
+  margin:5px 0 2px 0;
+  border-radius:5px;
+  background:linear-gradient(
+    to right,
+    #ffffcc 0%,
+    #ffeda0 14%,
+    #fed976 29%,
+    #feb24c 43%,
+    #fd8d3c 57%,
+    #fc4e2a 71%,
+    #e31a1c 86%,
+    #b10026 100%
+  );
+}
+.rerimss-range-control .gradient-labels{
+  display:flex;
+  justify-content:space-between;
+  font-size:10px;
+  color:#66756f;
+}
+
+
+/* ============================================================
+   CONTROL TEMPORAL v3
+   Se renderiza FUERA de Leaflet para que siempre sea visible.
+   Dos sliders nativos independientes evitan problemas de
+   superposición de thumbs entre navegadores.
+   ============================================================ */
+
+.rerimss-range-control-static{
+  width:100% !important;
+  max-width:820px;
+  box-sizing:border-box;
+  margin:12px auto 18px auto;
+  padding:15px 18px 14px 18px;
+}
+
+.rerimss-range-control-static .slider-row{
+  display:grid;
+  grid-template-columns:115px minmax(180px,1fr) 68px;
+  gap:12px;
+  align-items:center;
+  margin:10px 0;
+}
+
+.rerimss-range-control-static .slider-label{
+  font-size:12px;
+  font-weight:700;
+  color:#53645e;
+}
+
+.rerimss-range-control-static input[type=range]{
+  position:static !important;
+  width:100% !important;
+  height:30px !important;
+  margin:0 !important;
+  pointer-events:auto !important;
+  opacity:1 !important;
+  z-index:auto !important;
+  background:transparent;
+  accent-color:#006847;
+  cursor:pointer;
+}
+
+.rerimss-range-control-static .year-pill{
+  display:inline-block;
+  min-width:58px;
+  text-align:center;
+  padding:5px 7px;
+  border:1px solid #cbdad4;
+  border-radius:6px;
+  background:#fff;
+  color:#004d3a;
+  font-size:14px;
+  font-weight:750;
+}
+
+.rerimss-range-control-static .active-period{
+  margin-top:8px;
+  padding:8px 10px;
+  border-radius:6px;
+  background:#edf6f2;
+  border:1px solid #d4e5dd;
+  color:#004d3a;
+  font-size:12.5px;
+  font-weight:650;
+  text-align:center;
+}
+
+.rerimss-range-control-static .control-status{
+  margin-top:7px;
+  text-align:center;
+  font-size:11px;
+  color:#697973;
+}
+
+@media(max-width:650px){
+  .rerimss-range-control-static .slider-row{
+    grid-template-columns:1fr;
+    gap:3px;
+  }
+
+  .rerimss-range-control-static .year-pill{
+    justify-self:start;
+  }
+}
+
+
+
+/* ============================================================
+   TRES MAPAS SINCRONIZADOS
+   ============================================================ */
+.shared-control{
+  max-width:900px;
+  margin:14px auto 24px auto;
+  padding:16px 18px;
+  border:1px solid #cbdad4;
+  border-radius:9px;
+  background:#fff;
+  box-shadow:0 1px 5px rgba(0,0,0,.06);
+}
+.shared-control .control-title{
+  color:#004d3a;
+  font-size:16px;
+  font-weight:800;
+  margin-bottom:5px;
+}
+.shared-control .control-subtitle{
+  color:#5f6f69;
+  font-size:12.5px;
+  margin-bottom:11px;
+}
+.shared-control .slider-row{
+  display:grid;
+  grid-template-columns:115px minmax(180px,1fr) 68px;
+  gap:12px;
+  align-items:center;
+  margin:10px 0;
+}
+.shared-control .slider-label{
+  font-size:12px;
+  font-weight:700;
+  color:#53645e;
+}
+.shared-control input[type=range]{
+  width:100%;
+  height:30px;
+  accent-color:#006847;
+  cursor:pointer;
+}
+.shared-control .year-pill{
+  display:inline-block;
+  min-width:58px;
+  text-align:center;
+  padding:5px 7px;
+  border:1px solid #cbdad4;
+  border-radius:6px;
+  background:#fff;
+  color:#004d3a;
+  font-size:14px;
+  font-weight:750;
+}
+.shared-control .active-period{
+  margin-top:9px;
+  padding:9px 10px;
+  border-radius:6px;
+  background:#edf6f2;
+  border:1px solid #d4e5dd;
+  color:#004d3a;
+  font-size:13px;
+  font-weight:700;
+  text-align:center;
+}
+.metric-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(170px,1fr));
+  gap:10px;
+  margin-top:12px;
+}
+.metric-card{
+  border:1px solid #d8e6df;
+  border-radius:7px;
+  padding:10px 11px;
+  background:#f7faf8;
+}
+.metric-card .metric-name{
+  font-size:11px;
+  text-transform:uppercase;
+  color:#60716b;
+  font-weight:750;
+}
+.metric-card .metric-value{
+  display:block;
+  color:#004d3a;
+  font-size:19px;
+  font-weight:800;
+  margin-top:2px;
+}
+.metric-card .metric-detail{
+  display:block;
+  color:#6b7a75;
+  font-size:10.5px;
+  margin-top:2px;
+}
+.map-summary{
+  display:flex;
+  flex-wrap:wrap;
+  gap:14px;
+  align-items:center;
+  justify-content:space-between;
+  margin:7px 2px 10px 2px;
+  padding:9px 11px;
+  border:1px solid #dbe8e2;
+  border-radius:7px;
+  background:#f8fbf9;
+  font-size:12px;
+}
+.map-summary strong{color:#004d3a;}
+.mini-gradient-wrap{min-width:260px;max-width:360px;flex:1;}
+.mini-gradient{
+  height:9px;
+  border-radius:5px;
+  background:linear-gradient(to right,#ffffcc,#ffeda0,#fed976,#feb24c,#fd8d3c,#fc4e2a,#e31a1c,#b10026);
+}
+.mini-gradient-labels{
+  display:flex;
+  justify-content:space-between;
+  color:#66756f;
+  font-size:9.5px;
+}
+.public-note{
+  background:#fff8f3;
+  border:1px solid #ead7cc;
+  border-left:6px solid #a85a3b;
+  border-radius:8px;
+  padding:12px 15px;
+  margin:13px 0 20px 0;
+}
+@media(max-width:760px){
+  .shared-control .slider-row{grid-template-columns:1fr;gap:3px;}
+  .shared-control .year-pill{justify-self:start;}
+  .metric-grid{grid-template-columns:1fr;}
+  .map-summary{display:block;}
+  .mini-gradient-wrap{margin-top:8px;max-width:none;}
+}
+
+</style>
+
+# Descripción de los mapas
+
+<div class="callout">
+<b>Controles temporales independientes.</b> Cada mapa dispone de su propia barra doble de año inicial y año final. Por tanto, es posible comparar simultáneamente periodos diferentes para casos totales, incidencia y casos activos. Cada cambio actualiza sólo el mapa correspondiente: puntos visibles, numerador del AGEB, tasa por 100,000 habitantes, popup, tooltip y escala cromática.
+</div>
+
+Se presentan tres lecturas complementarias de la carga renal georreferenciada:
+
+1. **Casos totales del periodo:** pacientes que estuvieron presentes en algún momento del intervalo seleccionado. Se incluyen quienes fallecen dentro del intervalo; sólo se excluyen quienes ya habían fallecido antes del inicio del periodo.
+2. **Incidencia:** pacientes cuya primera fecha de inicio del caso ocurre dentro del intervalo seleccionado. Cuando el intervalo comprende varios años, la cifra representa incidencia acumulada del periodo, no una tasa anualizada.
+3. **Casos activos:** pacientes que habían iniciado antes o durante el año final seleccionado y que permanecen vivos al cierre de ese año. Por tanto, se excluyen los fallecidos hasta esa fecha.
+
+Para los tres mapas, el color del AGEB corresponde a:
+
+\[
+\text{Indicador por 100,000}_{AGEB}
+=\frac{\text{pacientes elegibles en el AGEB}}
+{\text{POBTOT del AGEB, Censo 2020}}\times 100,000.
+\]
+
+<div class="callout">
+<b>Interpretación del intervalo.</b> Por ejemplo, con 2019–2022: el mapa de <i>casos totales</i> representa a quienes estuvieron bajo observación en algún momento de 2019–2022; el mapa de <i>incidencia</i> muestra nuevos casos cuyo primer inicio ocurrió entre 2019 y 2022; y el mapa de <i>casos activos</i> representa a quienes permanecen vivos al 31 de diciembre de 2022.
+</div>
+
+<div class="public-note">
+<b>Confidencialidad y shinyapps.io.</b> Esta versión incluye deliberadamente los puntos individuales y, al hacer clic, muestra información clínica vinculada al caso. Por ello <code>public_mode: false</code> es el valor predeterminado. Si se publica en shinyapps.io, la aplicación debe mantenerse <b>privada</b> o utilizarse una versión anonimizada antes de hacerla pública.
+</div>
+
+# Preparación
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  comment = NA
+)
+
+options(scipen = 999)
+
+paquetes <- c(
+  "DBI", "RSQLite", "readxl", "dplyr", "stringr",
+  "lubridate", "purrr", "sf", "leaflet",
+  "htmltools", "htmlwidgets", "tidyr"
+)
+
+faltantes <- paquetes[
+  !vapply(paquetes, requireNamespace, logical(1), quietly = TRUE)
+]
+
+if (length(faltantes) > 0) {
+  stop(
+    "Faltan paquetes de R: ",
+    paste(faltantes, collapse = ", ")
+  )
+}
+
+library(DBI)
+library(RSQLite)
+library(readxl)
+library(dplyr)
+library(stringr)
+library(lubridate)
+library(purrr)
+library(sf)
+library(leaflet)
+library(htmltools)
+library(htmlwidgets)
+library(tidyr)
+```
+
+## Funciones auxiliares
+
+```{r funciones, include=FALSE}
+normalizar_na_texto <- function(x) {
+  z <- stringr::str_squish(as.character(x))
+  z[
+    is.na(z) |
+      z %in% c("", "NA", "N/A", "NULL", "null", "NaN", "nan")
+  ] <- NA_character_
+  z
+}
+
+convertir_coordenada <- function(x) {
+  z <- normalizar_na_texto(x)
+  z <- stringr::str_replace_all(z, ",", ".")
+  suppressWarnings(as.numeric(z))
+}
+
+fecha_parse_segura <- function(x) {
+  z <- normalizar_na_texto(x)
+  suppressWarnings(
+    lubridate::ymd(z, quiet = TRUE)
+  )
+}
+
+first_chr <- function(x) {
+  x <- normalizar_na_texto(x)
+  x <- x[!is.na(x)]
+  if (length(x) == 0) NA_character_ else x[[1]]
+}
+
+safe_min_date <- function(x) {
+  x <- as.Date(x)
+  x <- x[!is.na(x)]
+  if (length(x) == 0) as.Date(NA) else min(x)
+}
+
+safe_max_date <- function(x) {
+  x <- as.Date(x)
+  x <- x[!is.na(x)]
+  if (length(x) == 0) as.Date(NA) else max(x)
+}
+
+fmt_n <- function(x) {
+  ifelse(
+    is.na(x),
+    "No disponible",
+    format(
+      round(x),
+      big.mark = ",",
+      trim = TRUE,
+      scientific = FALSE
+    )
+  )
+}
+
+fmt_rate <- function(x, digits = 1) {
+  ifelse(
+    is.na(x),
+    "No disponible",
+    formatC(
+      x,
+      format = "f",
+      digits = digits,
+      big.mark = ","
+    )
+  )
+}
+
+rate_100k <- function(n, pop) {
+  ifelse(
+    is.na(pop) | pop <= 0,
+    NA_real_,
+    (n / pop) * 100000
+  )
+}
+
+inegi_num <- function(x) {
+  z <- normalizar_na_texto(x)
+  z[
+    z %in% c("*", "N/D", "ND", "N.D.")
+  ] <- NA_character_
+  z <- stringr::str_replace_all(z, ",", "")
+  suppressWarnings(as.numeric(z))
+}
+
+esc <- function(x) {
+  htmltools::htmlEscape(
+    ifelse(is.na(x), "No disponible", as.character(x))
+  )
+}
+
+construir_cvegeo_ageb <- function(df) {
+
+  nm <- names(df)
+
+  if ("CVEGEO" %in% nm) {
+    return(
+      stringr::str_squish(
+        as.character(df$CVEGEO)
+      )
+    )
+  }
+
+  if ("CVEGEO_AGEB" %in% nm) {
+    return(
+      stringr::str_squish(
+        as.character(df$CVEGEO_AGEB)
+      )
+    )
+  }
+
+  buscar_col <- function(candidatos) {
+    z <- intersect(candidatos, nm)
+    if (length(z) == 0) NA_character_ else z[[1]]
+  }
+
+  c_ent  <- buscar_col(c("CVE_ENT", "ENTIDAD", "ENT"))
+  c_mun  <- buscar_col(c("CVE_MUN", "MUN"))
+  c_loc  <- buscar_col(c("CVE_LOC", "LOC"))
+  c_ageb <- buscar_col(c("CVE_AGEB", "AGEB"))
+
+  if (any(is.na(c(c_ent, c_mun, c_loc, c_ageb)))) {
+    stop(
+      "No fue posible construir la clave CVEGEO de AGEB."
+    )
+  }
+
+  paste0(
+    stringr::str_pad(
+      as.character(df[[c_ent]]),
+      2,
+      pad = "0"
+    ),
+    stringr::str_pad(
+      as.character(df[[c_mun]]),
+      3,
+      pad = "0"
+    ),
+    stringr::str_pad(
+      as.character(df[[c_loc]]),
+      4,
+      pad = "0"
+    ),
+    stringr::str_pad(
+      as.character(df[[c_ageb]]),
+      4,
+      pad = "0"
+    )
+  )
+}
+
+normalizar_atributos_sf <- function(x) {
+
+  geom_col <- attr(
+    x,
+    "sf_column"
+  )
+
+  if (
+    is.null(geom_col) ||
+      !geom_col %in% names(x)
+  ) {
+    sfc_col <- names(x)[
+      vapply(
+        x,
+        inherits,
+        logical(1),
+        what = "sfc"
+      )
+    ]
+
+    if (length(sfc_col) == 0) {
+      stop(
+        "No se encontró una columna de geometría."
+      )
+    }
+
+    geom_col <- sfc_col[[1]]
+    sf::st_geometry(x) <- geom_col
+  }
+
+  atributos <- setdiff(
+    names(x),
+    geom_col
+  )
+
+  names(x)[
+    match(atributos, names(x))
+  ] <- toupper(atributos)
+
+  sf::st_geometry(x) <- geom_col
+
+  x
+}
+
+CRS_INEGI_CCL_2020 <- paste(
+  "+proj=lcc",
+  "+lat_1=17.5",
+  "+lat_2=29.5",
+  "+lat_0=12",
+  "+lon_0=-102",
+  "+x_0=2500000",
+  "+y_0=0",
+  "+ellps=GRS80",
+  "+units=m",
+  "+no_defs"
+)
+
+bbox_plausible_ags <- function(x) {
+
+  prueba <- try(
+    sf::st_transform(
+      x,
+      4326
+    ),
+    silent = TRUE
+  )
+
+  if (
+    inherits(prueba, "try-error")
+  ) {
+    return(FALSE)
+  }
+
+  bb <- sf::st_bbox(
+    prueba
+  )
+
+  if (
+    any(
+      !is.finite(
+        as.numeric(bb)
+      )
+    )
+  ) {
+    return(FALSE)
+  }
+
+  bb["xmin"] > -104.5 &&
+    bb["xmax"] < -101.0 &&
+    bb["ymin"] > 20.5 &&
+    bb["ymax"] < 23.5
+}
+
+resolver_crs_ageb <- function(x) {
+
+  x <- normalizar_atributos_sf(x)
+
+  if (
+    !is.na(sf::st_crs(x)) &&
+      bbox_plausible_ags(x)
+  ) {
+    return(
+      sf::st_transform(
+        x,
+        4326
+      )
+    )
+  }
+
+  candidatos <- list(
+    WGS84 = 4326,
+    UTM13N = 32613,
+    INEGI_CCL_2020 = CRS_INEGI_CCL_2020
+  )
+
+  for (crs_i in candidatos) {
+
+    tmp <- x
+
+    suppressWarnings(
+      sf::st_crs(tmp) <- crs_i
+    )
+
+    if (
+      isTRUE(
+        bbox_plausible_ags(tmp)
+      )
+    ) {
+      return(
+        sf::st_transform(
+          tmp,
+          4326
+        )
+      )
+    }
+  }
+
+  stop(
+    "No fue posible determinar un CRS plausible para el shapefile de AGEB."
+  )
+}
+
+
+# Mapa base compatible con publicación web sin API key.
+OSM_TILE_URL <- "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+OSM_ATTRIBUTION <- paste0(
+  '&copy; <a href="https://www.openstreetmap.org/copyright">',
+  'OpenStreetMap contributors</a>'
+)
+
+add_rerimss_basemap <- function(map, group = "OpenStreetMap") {
+  mode <- tolower(trimws(params$basemap_mode))
+
+  if (identical(mode, "none")) {
+    return(map)
+  }
+
+  if (!identical(mode, "osm")) {
+    stop("params$basemap_mode debe ser 'osm' o 'none'.")
+  }
+
+  map %>%
+    leaflet::addTiles(
+      urlTemplate = OSM_TILE_URL,
+      group = group,
+      attribution = OSM_ATTRIBUTION,
+      options = leaflet::tileOptions(
+        minZoom = 1,
+        maxZoom = 19,
+        noWrap = TRUE
+      )
+    )
+}
+
+```
+
+# Lectura de los datos
+
+## Geolocalizaciones
+
+```{r leer-geo, include=FALSE}
+geo_raw <- readxl::read_excel(
+  params$geo_path,
+  guess_max = 50000
+)
+
+names(geo_raw) <- names(geo_raw) %>%
+  stringr::str_to_lower() %>%
+  stringr::str_replace_all(
+    "[^[:alnum:]_]+",
+    "_"
+  ) %>%
+  stringr::str_replace_all(
+    "^_|_$",
+    ""
+  )
+
+requeridas_geo <- c(
+  "curp",
+  "lat",
+  "long"
+)
+
+faltan_geo <- setdiff(
+  requeridas_geo,
+  names(geo_raw)
+)
+
+if (length(faltan_geo) > 0) {
+  stop(
+    "Faltan columnas en el Excel de geolocalización: ",
+    paste(faltan_geo, collapse = ", ")
+  )
+}
+
+geo <- geo_raw %>%
+  mutate(
+    caso_geo_id = row_number(),
+    curp = normalizar_na_texto(curp),
+    direccion = if (
+      "direccion" %in% names(geo_raw)
+    ) normalizar_na_texto(direccion) else NA_character_,
+    lat = convertir_coordenada(lat),
+    long = convertir_coordenada(long),
+    coord_ok = (
+      is.finite(lat) &
+        is.finite(long) &
+        between(lat, -90, 90) &
+        between(long, -180, 180)
+    )
+  )
+
+geo_ok <- geo %>%
+  filter(
+    coord_ok
+  )
+```
+
+## Base clínica RERIMSS
+
+```{r leer-db, include=FALSE}
+con <- DBI::dbConnect(
+  RSQLite::SQLite(),
+  params$db_path
+)
+
+registros <- DBI::dbReadTable(
+  con,
+  "registros"
+)
+
+terapias <- DBI::dbReadTable(
+  con,
+  "terapias_sustitutivas"
+)
+
+DBI::dbDisconnect(
+  con
+)
+
+registros <- registros %>%
+  mutate(
+    curp = normalizar_na_texto(curp),
+    sexo = normalizar_na_texto(sexo),
+    causa_erc = normalizar_na_texto(causa_erc),
+    edo_actual = normalizar_na_texto(edo_actual),
+    domicilio = normalizar_na_texto(domicilio),
+    nombre = normalizar_na_texto(nombre),
+    apellido_paterno = normalizar_na_texto(apellido_paterno),
+    apellido_materno = normalizar_na_texto(apellido_materno),
+    fecha_inicio_parse = fecha_parse_segura(fecha_inicio),
+    inicio_ts_parse = fecha_parse_segura(inicio_ts),
+    fecha_muerte_parse = fecha_parse_segura(fecha_muerte),
+    fecha_ultima_consulta_parse = fecha_parse_segura(
+      fecha_ultima_consulta
+    ),
+    nombre_completo = stringr::str_squish(
+      paste(
+        dplyr::coalesce(nombre, ""),
+        dplyr::coalesce(apellido_paterno, ""),
+        dplyr::coalesce(apellido_materno, "")
+      )
+    )
+  )
+
+pacientes <- registros %>%
+  filter(
+    !is.na(curp)
+  ) %>%
+  group_by(
+    curp
+  ) %>%
+  summarise(
+    nombre_completo = first_chr(nombre_completo),
+    sexo = first_chr(sexo),
+    causa_erc = first_chr(causa_erc),
+    domicilio = first_chr(domicilio),
+    estado_actual = first_chr(edo_actual),
+
+    fecha_inicio_caso = safe_min_date(
+      c(
+        fecha_inicio_parse,
+        inicio_ts_parse
+      )
+    ),
+
+    fecha_muerte = safe_min_date(
+      fecha_muerte_parse
+    ),
+
+    fecha_ultima_consulta = safe_max_date(
+      fecha_ultima_consulta_parse
+    ),
+
+    .groups = "drop"
+  ) %>%
+  mutate(
+    muerto_registrado = stringr::str_detect(
+      stringr::str_to_lower(
+        dplyr::coalesce(
+          estado_actual,
+          ""
+        )
+      ),
+      "muert"
+    ),
+
+    # Para fallecidos sin fecha explícita, la última consulta
+    # se utiliza como fecha de referencia operativa.
+    fecha_muerte_ref = dplyr::coalesce(
+      fecha_muerte,
+      dplyr::if_else(
+        muerto_registrado,
+        fecha_ultima_consulta,
+        as.Date(NA)
+      )
+    )
+  )
+
+terapias_curp <- terapias %>%
+  mutate(
+    modalidad = normalizar_na_texto(modalidad),
+    inicio_parse = fecha_parse_segura(inicio),
+    fin_parse = fecha_parse_segura(fin)
+  ) %>%
+  left_join(
+    registros %>%
+      select(
+        folio,
+        curp
+      ) %>%
+      distinct(),
+    by = "folio"
+  ) %>%
+  filter(
+    !is.na(curp)
+  )
+
+trayectorias <- terapias_curp %>%
+  arrange(
+    curp,
+    inicio_parse,
+    id
+  ) %>%
+  group_by(
+    curp
+  ) %>%
+  summarise(
+    trayectoria_html = paste0(
+      ifelse(
+        is.na(inicio_parse),
+        "Inicio no registrado",
+        as.character(inicio_parse)
+      ),
+      " → ",
+      ifelse(
+        is.na(fin_parse),
+        "actual/fin no registrado",
+        as.character(fin_parse)
+      ),
+      ": ",
+      dplyr::coalesce(
+        modalidad,
+        "Modalidad no registrada"
+      ),
+      collapse = "<br>"
+    ),
+    .groups = "drop"
+  )
+```
+
+## Puntos con información clínica
+
+```{r puntos-clinicos, include=FALSE}
+casos_geo <- geo_ok %>%
+  left_join(
+    pacientes,
+    by = "curp"
+  ) %>%
+  left_join(
+    trayectorias,
+    by = "curp"
+  ) %>%
+  mutate(
+    direccion_popup = dplyr::coalesce(
+      direccion,
+      domicilio
+    ),
+
+    popup_base = paste0(
+      "<div style='min-width:300px;'>",
+      "<div style='font-size:16px;font-weight:700;color:#004d3a;margin-bottom:7px;'>Caso renal</div>",
+      "<div style='font-size:12.5px;line-height:1.45;'>",
+      "<b>CURP:</b> ", esc(curp),
+      "<br><b>Nombre:</b> ", esc(nombre_completo),
+      "<br><b>Sexo:</b> ", esc(sexo),
+      "<br><b>Causa ERC:</b> ", esc(causa_erc),
+      "<br><b>Fecha de inicio:</b> ", esc(fecha_inicio_caso),
+      "<br><b>Estado actual:</b> ", esc(estado_actual),
+      "<br><b>Fecha de muerte/ref.:</b> ", esc(fecha_muerte_ref),
+      "<br><b>Domicilio:</b> ", esc(direccion_popup),
+      "</div>",
+      "<div style='margin-top:9px;padding-top:7px;border-top:1px solid #dbe7e2;font-size:11.5px;'>",
+      "<b>Trayectoria terapéutica</b><br>",
+      dplyr::coalesce(
+        trayectoria_html,
+        "Sin trayectoria registrada"
+      ),
+      "</div>",
+      "</div>"
+    )
+  )
+
+puntos_sf <- sf::st_as_sf(
+  casos_geo,
+  coords = c(
+    "long",
+    "lat"
+  ),
+  crs = 4326,
+  remove = FALSE
+)
+```
+
+## AGEB y población del Censo 2020
+
+```{r ageb-censo, include=FALSE}
+agebs_raw <- sf::st_read(
+  params$ageb_path,
+  quiet = TRUE,
+  stringsAsFactors = FALSE
+)
+
+agebs <- resolver_crs_ageb(
+  agebs_raw
+) %>%
+  sf::st_make_valid()
+
+agebs$CVEGEO_AGEB <- construir_cvegeo_ageb(
+  agebs
+)
+
+agebs$CVEGEO_AGEB <- stringr::str_to_upper(
+  stringr::str_squish(
+    agebs$CVEGEO_AGEB
+  )
+)
+
+if (
+  "AGEB" %in% names(agebs)
+) {
+  agebs$AGEB_LABEL <- as.character(
+    agebs$AGEB
+  )
+} else if (
+  "CVE_AGEB" %in% names(agebs)
+) {
+  agebs$AGEB_LABEL <- as.character(
+    agebs$CVE_AGEB
+  )
+} else {
+  agebs$AGEB_LABEL <- stringr::str_sub(
+    agebs$CVEGEO_AGEB,
+    -4
+  )
+}
+
+geom_col_ageb <- attr(
+  agebs,
+  "sf_column"
+)
+
+agebs <- agebs[
+  ,
+  c(
+    "CVEGEO_AGEB",
+    "AGEB_LABEL",
+    geom_col_ageb
+  )
+]
+
+censo_raw <- readxl::read_excel(
+  params$censo_path,
+  guess_max = 50000
+)
+
+names(censo_raw) <- toupper(
+  names(censo_raw)
+)
+
+if (
+  "MZA" %in% names(censo_raw)
+) {
+  censo_raw <- censo_raw %>%
+    mutate(
+      MZA = stringr::str_pad(
+        as.character(MZA),
+        3,
+        pad = "0"
+      )
+    ) %>%
+    filter(
+      MZA == "000"
+    )
+}
+
+censo_raw$CVEGEO_AGEB <- construir_cvegeo_ageb(
+  censo_raw
+)
+
+censo_raw$CVEGEO_AGEB <- stringr::str_to_upper(
+  stringr::str_squish(
+    censo_raw$CVEGEO_AGEB
+  )
+)
+
+censo_cols <- c(
+  "CVEGEO_AGEB",
+  "NOM_MUN",
+  "NOM_LOC",
+  "POBTOT",
+  "P_60YMAS",
+  "GRAPROES",
+  "PSINDER",
+  "PDER_IMSS",
+  "TVIVHAB",
+  "PROM_OCUP",
+  "VPH_AGUADV",
+  "VPH_DRENAJ",
+  "VPH_INTER"
+)
+
+for (
+  cc in setdiff(
+    censo_cols,
+    names(censo_raw)
+  )
+) {
+  censo_raw[[cc]] <- NA
+}
+
+censo_ageb <- censo_raw %>%
+  select(
+    all_of(censo_cols)
+  ) %>%
+  distinct(
+    CVEGEO_AGEB,
+    .keep_all = TRUE
+  ) %>%
+  mutate(
+    POBTOT = inegi_num(POBTOT),
+    P_60YMAS = inegi_num(P_60YMAS),
+    GRAPROES = inegi_num(GRAPROES),
+    PSINDER = inegi_num(PSINDER),
+    PDER_IMSS = inegi_num(PDER_IMSS),
+    TVIVHAB = inegi_num(TVIVHAB),
+    PROM_OCUP = inegi_num(PROM_OCUP),
+    VPH_AGUADV = inegi_num(VPH_AGUADV),
+    VPH_DRENAJ = inegi_num(VPH_DRENAJ),
+    VPH_INTER = inegi_num(VPH_INTER)
+  )
+
+agebs_censo <- agebs %>%
+  left_join(
+    censo_ageb,
+    by = "CVEGEO_AGEB"
+  )
+```
+
+# Asignación espacial
+
+```{r asignacion-ageb, include=FALSE}
+puntos_ageb <- sf::st_join(
+  puntos_sf,
+  agebs_censo %>%
+    select(
+      CVEGEO_AGEB
+    ),
+  join = sf::st_within,
+  left = TRUE
+) %>%
+  mutate(
+    asignado_ageb = !is.na(
+      CVEGEO_AGEB
+    )
+  )
+```
+
+# Rango temporal
+
+```{r rango-anios}
+anios_inicio <- pacientes %>%
+  filter(
+    !is.na(fecha_inicio_caso)
+  ) %>%
+  transmute(
+    anio = lubridate::year(
+      fecha_inicio_caso
+    )
+  ) %>%
+  pull(
+    anio
+  )
+
+if (
+  length(anios_inicio) == 0
+) {
+  stop(
+    "No existen fechas de inicio válidas para construir los mapas por año."
+  )
+}
+
+anio_min_datos <- min(
+  anios_inicio,
+  na.rm = TRUE
+)
+
+anio_max_datos <- max(
+  anios_inicio,
+  na.rm = TRUE
+)
+
+anio_min <- if (
+  is.na(params$anio_inicial)
+) anio_min_datos else max(
+  params$anio_inicial,
+  anio_min_datos
+)
+
+anio_max <- if (
+  is.na(params$anio_final)
+) anio_max_datos else min(
+  params$anio_final,
+  anio_max_datos
+)
+
+anios <- seq(
+  anio_min,
+  anio_max,
+  by = 1
+)
+
+cat(
+  paste0(
+    "<div class='callout'><b>Rango disponible:</b> ",
+    anio_min,
+    "–",
+    anio_max,
+    ". El año inicial y final se obtienen de la fecha de inicio de los casos con información temporal válida.</div>"
+  )
+)
+```
+
+# Preparación temporal común para los tres mapas
+
+```{r preparar-tres-mapas, include=FALSE}
+# Para los mapas temporales se utiliza una sola localización por persona.
+# Si una CURP tiene varias filas georreferenciadas, se prioriza una fila
+# que caiga dentro de un AGEB y después la primera fila disponible.
+puntos_persona <- puntos_ageb %>%
+  filter(
+    !is.na(curp),
+    !is.na(fecha_inicio_caso)
+  ) %>%
+  arrange(
+    curp,
+    desc(asignado_ageb),
+    caso_geo_id
+  ) %>%
+  group_by(curp) %>%
+  slice(1) %>%
+  ungroup() %>%
+  mutate(
+    startYear = lubridate::year(fecha_inicio_caso),
+    deathYear = lubridate::year(fecha_muerte_ref),
+    point_id = paste0("caso_", caso_geo_id),
+    person_public_id = as.integer(factor(curp))
+  ) %>%
+  filter(
+    !is.na(startYear),
+    startYear <= anio_max
+  )
+
+# Datos sociodemográficos estáticos de cada AGEB.
+ageb_info_js <- agebs_censo %>%
+  sf::st_drop_geometry() %>%
+  transmute(
+    id = CVEGEO_AGEB,
+    ageb = AGEB_LABEL,
+    municipio = dplyr::coalesce(NOM_MUN, "No disponible"),
+    localidad = dplyr::coalesce(NOM_LOC, "No disponible"),
+    poblacion = POBTOT,
+    p60 = P_60YMAS,
+    escolaridad = GRAPROES,
+    sin_salud = PSINDER,
+    imss = PDER_IMSS,
+    viviendas = TVIVHAB
+  )
+
+# IMPORTANTE PARA PUBLICACIÓN:
+# no se serializa CURP; person es un identificador secuencial interno.
+puntos_js <- puntos_persona %>%
+  sf::st_drop_geometry() %>%
+  transmute(
+    id = point_id,
+    person = person_public_id,
+    ageb = CVEGEO_AGEB,
+    startYear = as.integer(startYear),
+    deathYear = as.integer(deathYear)
+  )
+
+# Polígonos iniciales: JavaScript recalcula el indicador inmediatamente.
+agebs_base <- agebs_censo %>%
+  mutate(
+    popup_base_ageb = paste0(
+      "<div style='min-width:300px;'>",
+      "<div style='font-size:16px;font-weight:700;color:#004d3a;'>AGEB ",
+      esc(AGEB_LABEL),
+      "</div>",
+      "<div style='font-size:12px;margin-top:5px;'>Mueva el control temporal para actualizar el indicador.</div>",
+      "</div>"
+    )
+  )
+
+
+# ------------------------------------------------------------
+# Centro cartográfico robusto para los tres mapas.
+#
+# En v6.0, crear_mapa_base() utilizaba centro_lat y centro_long,
+# pero esos objetos no se habían definido previamente.
+# Se calculan aquí a partir del bounding box de los AGEB ya
+# transformados a WGS84. Si el bbox no es utilizable, se intenta
+# con los puntos georreferenciados y, como último respaldo, se usa
+# el centro aproximado de Aguascalientes capital.
+# ------------------------------------------------------------
+
+bb_mapa <- sf::st_bbox(agebs_base)
+
+bbox_valido <- all(
+  is.finite(
+    as.numeric(bb_mapa)
+  )
+) &&
+  bb_mapa["xmin"] >= -180 &&
+  bb_mapa["xmax"] <= 180 &&
+  bb_mapa["ymin"] >= -90 &&
+  bb_mapa["ymax"] <= 90 &&
+  bb_mapa["xmin"] < bb_mapa["xmax"] &&
+  bb_mapa["ymin"] < bb_mapa["ymax"]
+
+if (bbox_valido) {
+
+  centro_long <- mean(
+    c(
+      bb_mapa["xmin"],
+      bb_mapa["xmax"]
+    )
+  )
+
+  centro_lat <- mean(
+    c(
+      bb_mapa["ymin"],
+      bb_mapa["ymax"]
+    )
+  )
+
+} else {
+
+  centro_puntos <- puntos_persona %>%
+    sf::st_drop_geometry() %>%
+    filter(
+      is.finite(lat),
+      is.finite(long),
+      between(lat, -90, 90),
+      between(long, -180, 180)
+    )
+
+  if (nrow(centro_puntos) > 0) {
+
+    centro_lat <- median(
+      centro_puntos$lat,
+      na.rm = TRUE
+    )
+
+    centro_long <- median(
+      centro_puntos$long,
+      na.rm = TRUE
+    )
+
+  } else {
+
+    # Respaldo: centro aproximado de Aguascalientes capital.
+    centro_lat <- 21.8853
+    centro_long <- -102.2916
+  }
+}
+
+if (
+  !is.finite(centro_lat) ||
+  !is.finite(centro_long)
+) {
+  stop(
+    "No fue posible calcular un centro cartográfico válido para los mapas."
+  )
+}
+
+# En modo privado pueden mostrarse puntos individuales. En modo público
+# los marcadores no se agregan al widget, por lo que sus coordenadas y
+# popups clínicos no forman parte de los tres mapas temporales.
+puntos_privados <- puntos_persona %>%
+  mutate(
+    point_color = if_else(asignado_ageb, "#2166AC", "#762A83"),
+    popup_temporal = paste0(
+      popup_base,
+      "<div style='margin-top:7px;font-size:11px;color:#5f6f69;'>",
+      "<b>Inicio usado:</b> ", startYear,
+      "<br><b>Año de muerte/ref.:</b> ",
+      ifelse(is.na(deathYear), "No registrado", deathYear),
+      "</div>"
+    )
+  )
+
+# Conversión explícita a lista de registros para htmlwidgets.
+df_a_registros_js <- function(df) {
+  if (nrow(df) == 0) return(list())
+
+  unname(
+    lapply(
+      seq_len(nrow(df)),
+      function(i) as.list(df[i, , drop = FALSE])
+    )
+  )
+}
+
+colores_mapa <- c(
+  "#ffffcc", "#ffeda0", "#fed976", "#feb24c",
+  "#fd8d3c", "#fc4e2a", "#e31a1c", "#b10026"
+)
+
+# Función R para crear la estructura base de cada mapa.
+crear_mapa_base <- function() {
+  m <- leaflet(
+    width = "100%",
+    height = 690,
+    options = leafletOptions(
+      preferCanvas = TRUE,
+      zoomControl = TRUE
+    )
+  )
+
+  m <- add_rerimss_basemap(m) %>%
+    setView(
+      lng = centro_long,
+      lat = centro_lat,
+      zoom = 10
+    ) %>%
+    addPolygons(
+      data = agebs_base,
+      layerId = ~CVEGEO_AGEB,
+      group = "AGEB",
+      weight = 0.9,
+      color = "#5C6662",
+      opacity = 0.80,
+      fillColor = "#EEEEEE",
+      fillOpacity = 0.72,
+      smoothFactor = 0.25,
+      popup = ~popup_base_ageb,
+      label = ~paste0("AGEB ", AGEB_LABEL),
+      highlightOptions = highlightOptions(
+        weight = 2.5,
+        color = "#263238",
+        fillOpacity = 0.84,
+        bringToFront = TRUE
+      )
+    )
+
+  if (nrow(puntos_privados) > 0) {
+    m <- m %>%
+      addCircleMarkers(
+        data = puntos_privados,
+        layerId = ~point_id,
+        group = "Casos individuales",
+        lng = ~long,
+        lat = ~lat,
+        radius = 4.0,
+        stroke = TRUE,
+        weight = 0.75,
+        color = ~point_color,
+        fillColor = ~point_color,
+        fillOpacity = 0.86,
+        opacity = 0.92,
+        popup = ~popup_temporal,
+        label = ~paste0(
+          "Caso renal · ",
+          dplyr::coalesce(nombre_completo, "Nombre no disponible")
+        )
+      )
+  }
+
+  m %>%
+    addScaleBar(position = "bottomleft")
+}
+
+# JavaScript común, parametrizado por indicador y por control independiente.
+crear_js_mapa <- function(metric, prefix) {
+
+  # La plantilla supera 8192 caracteres; no se usa sprintf().
+  js <- "function(el, x, data) {
+  var map = this;
+  var metric = '__RERIMSS_METRIC__';
+  var prefix = '__RERIMSS_PREFIX__';
+
+  function asRecords(obj) {
+    if (Array.isArray(obj)) return obj;
+    if (obj === null || obj === undefined || typeof obj !== 'object') return [];
+    var keys = Object.keys(obj);
+    if (keys.length === 0) return [];
+    var n = 0;
+    keys.forEach(function(k){ if (Array.isArray(obj[k])) n = Math.max(n, obj[k].length); });
+    var out = [];
+    for (var i = 0; i < n; i++) {
+      var row = {};
+      keys.forEach(function(k){ row[k] = Array.isArray(obj[k]) ? obj[k][i] : obj[k]; });
+      out.push(row);
+    }
+    return out;
+  }
+
+  var agebRows = asRecords(data.agebs);
+  var pointRows = asRecords(data.points);
+  var colors = data.colors || [];
+  var minPublicCount = Number(data.minPublicCount || 0);
+  var publicMode = !!data.publicMode;
+
+  var agebInfo = {};
+  agebRows.forEach(function(d){ agebInfo[String(d.id)] = d; });
+
+  function numOrNull(v){
+    if (v === null || v === undefined || v === '' || v === 'NA') return null;
+    var z = Number(v);
+    return isFinite(z) ? z : null;
+  }
+
+  pointRows = pointRows.map(function(p){
+    return {
+      id: String(p.id),
+      person: String(p.person),
+      ageb: p.ageb === null || p.ageb === undefined ? '' : String(p.ageb),
+      startYear: numOrNull(p.startYear),
+      deathYear: numOrNull(p.deathYear)
+    };
+  });
+
+  function fmt(v, digits){
+    if (v === null || v === undefined || !isFinite(Number(v))) return 'No disponible';
+    return Number(v).toLocaleString('es-MX', {
+      minimumFractionDigits: digits || 0,
+      maximumFractionDigits: digits || 0
+    });
+  }
+
+  function colorFor(value, maxValue){
+    if (value === null || value === undefined || !isFinite(value)) return '#eeeeee';
+    if (maxValue <= 0) return colors[0];
+    var r = Math.max(0, Math.min(1, value / maxValue));
+    var idx = Math.min(colors.length - 1, Math.floor(r * colors.length));
+    return colors[idx];
+  }
+
+  function getLayer(category, id){
+    if (map.layerManager && typeof map.layerManager.getLayer === 'function') {
+      var ans = map.layerManager.getLayer(category, id);
+      if (ans) return ans;
+    }
+    if (map.layerManager && map.layerManager._byLayerId && map.layerManager._byLayerId[category]) {
+      return map.layerManager._byLayerId[category][id] || null;
+    }
+    return null;
+  }
+
+  function eligible(p, a, b){
+    if (p.startYear === null) return false;
+
+    if (metric === 'incidence') {
+      return p.startYear >= a && p.startYear <= b;
+    }
+
+    if (metric === 'active') {
+      return p.startYear <= b && (p.deathYear === null || p.deathYear > b);
+    }
+
+    // total_period: estuvo presente en algún momento del intervalo.
+    return p.startYear <= b && (p.deathYear === null || p.deathYear >= a);
+  }
+
+  function metricTitle(){
+    if (metric === 'incidence') return 'Incidencia acumulada';
+    if (metric === 'active') return 'Casos activos al cierre';
+    return 'Casos totales del periodo';
+  }
+
+  function popupHtml(info, a, b, n, rate, suppressed){
+    var countTxt = suppressed ? ('<' + minPublicCount) : fmt(n, 0);
+    var rateTxt = suppressed ? 'Suprimida' : (fmt(rate, 1) + ' por 100,000');
+
+    return (
+      '<div style=\"min-width:315px;\">' +
+        '<div style=\"font-size:16px;font-weight:700;color:#004d3a;margin-bottom:7px;\">AGEB ' +
+          (info.ageb || '') +
+        '</div>' +
+        '<div style=\"font-size:12.5px;line-height:1.45;\">' +
+          '<b>Indicador:</b> ' + metricTitle() +
+          '<br><b>Intervalo:</b> ' + a + '–' + b +
+          '<br><b>Clave geoestadística:</b> ' + info.id +
+          '<br><b>Municipio:</b> ' + (info.municipio || 'No disponible') +
+          '<br><b>Localidad:</b> ' + (info.localidad || 'No disponible') +
+        '</div>' +
+        '<div style=\"margin:10px 0;padding:8px 9px;border:1px solid #d8e6df;border-radius:6px;background:#f7faf8;\">' +
+          '<b>Pacientes:</b> ' + countTxt +
+          '<br><b>Población total (Censo 2020):</b> ' + fmt(info.poblacion, 0) +
+          '<br><b>Indicador:</b> ' + rateTxt +
+        '</div>' +
+        '<div style=\"font-size:11.5px;line-height:1.4;\">' +
+          '<b>Población de 60 años y más:</b> ' + fmt(info.p60, 0) +
+          '<br><b>Grado promedio de escolaridad:</b> ' + fmt(info.escolaridad, 2) +
+          '<br><b>Población sin afiliación a salud:</b> ' + fmt(info.sin_salud, 0) +
+          '<br><b>Población afiliada al IMSS:</b> ' + fmt(info.imss, 0) +
+          '<br><b>Viviendas habitadas:</b> ' + fmt(info.viviendas, 0) +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  var startInput = document.getElementById(prefix + '-start-range');
+  var endInput = document.getElementById(prefix + '-end-range');
+  var startValue = document.getElementById(prefix + '-start-value');
+  var endValue = document.getElementById(prefix + '-end-value');
+  var periodEl = document.getElementById(prefix + '-period');
+  var countEl = document.getElementById(prefix + '-count');
+  var maxEl = document.getElementById(prefix + '-max');
+  var legendEl = document.getElementById(prefix + '-legend');
+
+  if (!startInput || !endInput) {
+    console.error('RERIMSS: no se encontraron los controles temporales para ' + prefix + '.');
+    return;
+  }
+
+  function updateMap(){
+    var a = Number(startInput.value);
+    var b = Number(endInput.value);
+
+    if (a > b) {
+      if (document.activeElement === startInput) {
+        b = a;
+        endInput.value = String(b);
+      } else {
+        a = b;
+        startInput.value = String(a);
+      }
+    }
+
+    if (startValue) startValue.textContent = a;
+    if (endValue) endValue.textContent = b;
+    if (periodEl) periodEl.textContent = 'Periodo seleccionado: ' + a + '–' + b;
+
+    var personGlobal = {};
+    var personByAgeb = {};
+    var eligiblePoint = {};
+
+    pointRows.forEach(function(p){
+      var ok = eligible(p, a, b);
+      eligiblePoint[p.id] = ok;
+      if (!ok) return;
+
+      personGlobal[p.person] = true;
+
+      if (p.ageb) {
+        if (!personByAgeb[p.ageb]) personByAgeb[p.ageb] = {};
+        personByAgeb[p.ageb][p.person] = true;
+      }
+    });
+
+    var nums = {};
+    var rates = {};
+    var suppressed = {};
+    var maxRate = 0;
+
+    Object.keys(agebInfo).forEach(function(id){
+      var n = personByAgeb[id] ? Object.keys(personByAgeb[id]).length : 0;
+      var info = agebInfo[id];
+      var pop = Number(info.poblacion);
+      var sup = publicMode && minPublicCount > 0 && n > 0 && n < minPublicCount;
+      var rate = null;
+
+      if (!sup && isFinite(pop) && pop > 0) rate = 100000 * n / pop;
+
+      nums[id] = n;
+      rates[id] = rate;
+      suppressed[id] = sup;
+
+      if (rate !== null && isFinite(rate) && rate > maxRate) maxRate = rate;
+    });
+
+    Object.keys(agebInfo).forEach(function(id){
+      var layer = getLayer('shape', id);
+      if (!layer) return;
+
+      var rate = rates[id];
+      var n = nums[id];
+      var sup = suppressed[id];
+
+      if (typeof layer.setStyle === 'function') {
+        layer.setStyle({
+          fillColor: sup ? '#d9d9d9' : colorFor(rate, maxRate),
+          fillOpacity: 0.72
+        });
+      }
+
+      if (typeof layer.setPopupContent === 'function') {
+        layer.setPopupContent(popupHtml(agebInfo[id], a, b, n, rate, sup));
+      }
+
+      if (typeof layer.getTooltip === 'function' && layer.getTooltip() &&
+          typeof layer.setTooltipContent === 'function') {
+        var tt = sup ? ('AGEB ' + (agebInfo[id].ageb || '') + ' · conteo suprimido') :
+          ('AGEB ' + (agebInfo[id].ageb || '') + ' · ' + fmt(rate, 1) + ' por 100,000');
+        layer.setTooltipContent(tt);
+      }
+    });
+
+    // Los marcadores existen en los tres mapas; aquí se muestran u ocultan según el periodo y el indicador.
+    pointRows.forEach(function(p){
+      var marker = getLayer('marker', p.id);
+      if (!marker) return;
+      if (eligiblePoint[p.id]) {
+        if (!map.hasLayer(marker)) map.addLayer(marker);
+      } else {
+        if (map.hasLayer(marker)) map.removeLayer(marker);
+      }
+    });
+
+    if (countEl) countEl.textContent = Object.keys(personGlobal).length.toLocaleString('es-MX');
+    if (maxEl) maxEl.textContent = fmt(maxRate, 1);
+    if (legendEl) legendEl.textContent = fmt(maxRate, 1);
+  }
+
+  var scheduled = false;
+  function scheduleUpdate(){
+    if (scheduled) return;
+    scheduled = true;
+    window.requestAnimationFrame(function(){
+      scheduled = false;
+      updateMap();
+    });
+  }
+
+  startInput.addEventListener('input', scheduleUpdate);
+  startInput.addEventListener('change', scheduleUpdate);
+  endInput.addEventListener('input', scheduleUpdate);
+  endInput.addEventListener('change', scheduleUpdate);
+
+  window.setTimeout(updateMap, 100);
+  window.setTimeout(updateMap, 400);
+}"
+
+  reemplazos <- c(
+    "__RERIMSS_METRIC__" = metric,
+    "__RERIMSS_PREFIX__" = prefix
+  )
+
+  for (token in names(reemplazos)) {
+    js <- gsub(
+      token,
+      reemplazos[[token]],
+      js,
+      fixed = TRUE
+    )
+  }
+
+  js
+}
+
+# Datos comunes a los tres widgets.
+# v6.2: la construcción del JavaScript evita sprintf() para no superar
+# el límite de longitud del argumento fmt.
+datos_js_comunes <- list(
+  minYear = as.integer(anio_min),
+  maxYear = as.integer(anio_max),
+  agebs = df_a_registros_js(ageb_info_js),
+  points = df_a_registros_js(puntos_js),
+  colors = colores_mapa,
+  publicMode = isTRUE(params$public_mode),
+  minPublicCount = as.integer(params$public_min_count)
+)
+
+
+# HTML de control temporal independiente para cada mapa.
+crear_control_temporal_html <- function(prefix, titulo, subtitulo) {
+
+  paste0(
+    '<div id="', prefix, '-control" class="shared-control">',
+      '<div class="control-title">', titulo, '</div>',
+      '<div class="control-subtitle">', subtitulo, '</div>',
+
+      '<div class="slider-row">',
+        '<div class="slider-label">Año inicial</div>',
+        '<input id="', prefix, '-start-range" type="range" min="', anio_min,
+        '" max="', anio_max, '" step="1" value="', anio_min, '">',
+        '<span id="', prefix, '-start-value" class="year-pill">', anio_min, '</span>',
+      '</div>',
+
+      '<div class="slider-row">',
+        '<div class="slider-label">Año final</div>',
+        '<input id="', prefix, '-end-range" type="range" min="', anio_min,
+        '" max="', anio_max, '" step="1" value="', anio_max, '">',
+        '<span id="', prefix, '-end-value" class="year-pill">', anio_max, '</span>',
+      '</div>',
+
+      '<div id="', prefix, '-period" class="active-period">',
+        'Periodo seleccionado: ', anio_min, '–', anio_max,
+      '</div>',
+
+      '<div class="metric-grid">',
+        '<div class="metric-card">',
+          '<span class="metric-name">Pacientes visibles</span>',
+          '<span id="', prefix, '-count" class="metric-value">Calculando…</span>',
+          '<span class="metric-detail">según el indicador y el intervalo de este mapa</span>',
+        '</div>',
+        '<div class="metric-card">',
+          '<span class="metric-name">Tasa máxima AGEB</span>',
+          '<span id="', prefix, '-max" class="metric-value">Calculando…</span>',
+          '<span class="metric-detail">por 100,000 habitantes; escala recalculada dinámicamente</span>',
+        '</div>',
+      '</div>',
+    '</div>'
+  )
+}
+
+```
+
+
+## Verificación cartográfica
+
+```{r verificacion-centro-mapa, echo=FALSE}
+tibble::tibble(
+  elemento = c(
+    "Centro de longitud",
+    "Centro de latitud",
+    "Bounding box AGEB válido"
+  ),
+  valor = c(
+    round(centro_long, 5),
+    round(centro_lat, 5),
+    bbox_valido
+  )
+) %>%
+  knitr::kable(
+    col.names = c("Elemento", "Valor"),
+    align = c("l", "l")
+  )
+```
+
+# Mapas con controles temporales independientes
+
+<div class="map-note">
+Cada mapa tiene su propio intervalo. El rango cromático se recalcula de manera independiente utilizando exclusivamente las tasas de los AGEB para los años elegidos en ese mapa.
+</div>
+
+# 1. Casos totales del periodo
+
+<div class="map-box">
+<div class="map-note">
+Incluye a toda persona que estuvo presente en algún momento del intervalo seleccionado: inició antes o durante el año final y no había fallecido antes del año inicial. Quienes fallecen dentro del intervalo permanecen incluidos.
+</div>
+
+```{r control-rerimss-total, results='asis'}
+cat(
+  crear_control_temporal_html(
+    prefix = "rerimss-total",
+    titulo = "Intervalo · casos totales",
+    subtitulo = "Ajuste independiente del periodo para la carga total."
+  )
+)
+```
+
+
+<div class="map-summary">
+  <div><strong>Tasa máxima del mapa:</strong> <span id="rerimss-total-max">Calculando…</span> por 100,000</div>
+  <div class="mini-gradient-wrap"><div class="mini-gradient"></div><div class="mini-gradient-labels"><span>0</span><span id="rerimss-total-legend">Calculando…</span></div></div>
+</div>
+
+```{r mapa-total-periodo}
+map_total <- crear_mapa_base()
+
+js_total <- crear_js_mapa(
+  metric = "total_period",
+  prefix = "rerimss-total"
+)
+
+htmlwidgets::onRender(
+  map_total,
+  js_total,
+  data = datos_js_comunes
+)
+```
+</div>
+
+# 2. Incidencia: casos nuevos
+
+<div class="map-box">
+<div class="map-note">
+Muestra únicamente pacientes cuya primera fecha de inicio del caso cae dentro del intervalo seleccionado. Si se eligen varios años, se trata de una incidencia acumulada del intervalo.
+</div>
+
+```{r control-rerimss-incidence, results='asis'}
+cat(
+  crear_control_temporal_html(
+    prefix = "rerimss-incidence",
+    titulo = "Intervalo · incidencia",
+    subtitulo = "Ajuste independiente del periodo de aparición de casos nuevos."
+  )
+)
+```
+
+
+<div class="map-summary">
+  <div><strong>Tasa máxima del mapa:</strong> <span id="rerimss-incidence-max">Calculando…</span> por 100,000</div>
+  <div class="mini-gradient-wrap"><div class="mini-gradient"></div><div class="mini-gradient-labels"><span>0</span><span id="rerimss-incidence-legend">Calculando…</span></div></div>
+</div>
+
+```{r mapa-incidencia}
+map_incidence <- crear_mapa_base()
+
+js_incidence <- crear_js_mapa(
+  metric = "incidence",
+  prefix = "rerimss-incidence"
+)
+
+htmlwidgets::onRender(
+  map_incidence,
+  js_incidence,
+  data = datos_js_comunes
+)
+```
+</div>
+
+# 3. Casos activos
+
+<div class="map-box">
+<div class="map-note">
+Representa pacientes que habían iniciado tratamiento antes o durante el año final y que permanecen vivos al cierre de ese año. Los fallecidos hasta el 31 de diciembre del año final quedan excluidos.
+</div>
+
+```{r control-rerimss-active, results='asis'}
+cat(
+  crear_control_temporal_html(
+    prefix = "rerimss-active",
+    titulo = "Intervalo · casos activos",
+    subtitulo = "Ajuste independiente del periodo; el estado activo se evalúa al cierre del año final."
+  )
+)
+```
+
+
+<div class="map-summary">
+  <div><strong>Tasa máxima del mapa:</strong> <span id="rerimss-active-max">Calculando…</span> por 100,000</div>
+  <div class="mini-gradient-wrap"><div class="mini-gradient"></div><div class="mini-gradient-labels"><span>0</span><span id="rerimss-active-legend">Calculando…</span></div></div>
+</div>
+
+```{r mapa-activos}
+map_active <- crear_mapa_base()
+
+js_active <- crear_js_mapa(
+  metric = "active",
+  prefix = "rerimss-active"
+)
+
+htmlwidgets::onRender(
+  map_active,
+  js_active,
+  data = datos_js_comunes
+)
+```
+</div>
+
+# Auditoría temporal
+
+```{r auditoria-temporal}
+auditoria_temporal <- tibble::tibble(
+  indicador = c(
+    "Personas con fecha de inicio válida y localización seleccionada",
+    "Personas con fecha de muerte/ref. disponible",
+    "Personas sin fecha de muerte/ref. disponible",
+    "Modo público",
+    "Supresión mínima por AGEB"
+  ),
+  valor = c(
+    nrow(puntos_persona),
+    sum(!is.na(puntos_persona$deathYear)),
+    sum(is.na(puntos_persona$deathYear)),
+    as.character(isTRUE(params$public_mode)),
+    as.character(params$public_min_count)
+  )
+)
+
+knitr::kable(
+  auditoria_temporal,
+  col.names = c("Indicador", "Valor"),
+  align = c("l", "r")
+)
+```
+
+# Consideraciones metodológicas
+
+<div class="callout">
+<b>Unidad de conteo.</b> Los tres mapas temporales cuentan personas, no filas. Cuando una CURP dispone de varias geolocalizaciones, se selecciona una sola localización para evitar doble conteo; se prioriza una fila asignada a un AGEB.<br><br>
+
+<b>Fecha de inicio.</b> Se utiliza la fecha clínica más temprana disponible entre <code>fecha_inicio</code> e <code>inicio_ts</code> para definir el inicio del caso.<br><br>
+
+<b>Fallecimiento.</b> Se utiliza <code>fecha_muerte</code> cuando está disponible. Si el registro identifica a la persona como fallecida pero no existe fecha explícita, la fecha de última consulta se utiliza como referencia operativa, siguiendo la lógica de los mapas previos.<br><br>
+
+<b>Casos totales del periodo.</b> Este indicador representa carga durante el intervalo: inicio ≤ fin del periodo y muerte ausente o no anterior al inicio del periodo. Así, un paciente que fallece durante el intervalo sí forma parte del total; un paciente fallecido antes del inicio del intervalo no forma parte de la carga del periodo.<br><br>
+
+<b>Incidencia.</b> Se define por primera fecha de inicio dentro del intervalo. Para intervalos de más de un año, la tasa mostrada es acumulada para el periodo y no se anualiza.<br><br>
+
+<b>Casos activos.</b> Se define como inicio ≤ año final y ausencia de muerte hasta el cierre del año final. Es conceptualmente equivalente a un stock de pacientes vivos al cierre del periodo, no a incidencia.<br><br>
+
+<b>Denominador.</b> Las tres tasas utilizan como denominador fijo <code>POBTOT</code> del Censo 2020. Por tanto, el cambio temporal se produce únicamente en el numerador.<br><br>
+
+<b>Escala de color.</b> Cada mapa recalcula en tiempo real su propia tasa máxima cada vez que cambia cualquiera de sus dos barras. La paleta vuelve a escalarse entre 0 y el máximo observado entre los AGEB para ese intervalo particular. Por ello, las intensidades son comparables dentro de cada mapa y periodo, pero el mismo tono no necesariamente representa la misma tasa entre mapas o periodos distintos; el máximo vigente se muestra explícitamente.<br><br>
+
+<b>Puntos individuales.</b> Los tres mapas incluyen marcadores individuales. Su visibilidad se actualiza con el intervalo seleccionado y con la definición del indicador. Al hacer clic se despliega la información clínica disponible, incluyendo identificación, sexo, causa de ERC, fecha de inicio, estado, referencia de fallecimiento, domicilio y trayectoria terapéutica. Los puntos fuera de AGEB continúan visibles cuando cumplen el criterio temporal, aunque no contribuyen al numerador de ningún polígono.<br><br>
+
+<b>Publicación.</b> Debido a que esta versión contiene coordenadas individuales e información clínica identificable en los popups, se recomienda desplegarla en shinyapps.io exclusivamente como aplicación privada. Para una aplicación pública conviene generar una variante anonimizada sin CURP, nombre, domicilio ni coordenadas exactas. Si además se desea protección frente a conteos pequeños por AGEB, puede establecerse por ejemplo <code>public_min_count: 5</code>.
+</div>
+
+# Información de sesión
+
+```{r session-info, include=FALSE}
+sessionInfo()
+```

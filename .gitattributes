@@ -1,0 +1,3 @@
+# Conservar los bytes de la fuente recibida y la licencia redistribuida.
+report/rerimss/informe.Rmd -text -whitespace
+docs/LEAFLET-LICENSE.txt -text -whitespace

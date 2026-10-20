@@ -1,0 +1,8 @@
+{
+  "variant": "public",
+  "basemap": "CARTO Positron",
+  "sha256": "6326afe7f814ddfedefc8a47ebe2456d12ec41ff240500c7b4408812436e34f8",
+  "census_agebs": 479,
+  "threshold": 5,
+  "rounding": 5
+}

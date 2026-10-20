@@ -1,0 +1,19 @@
+name: atlas-rmarkdown
+channels:
+  - conda-forge
+dependencies:
+  - r-base=4.5
+  - r-rmarkdown=2.30
+  - r-jsonlite=2.0
+  - r-dbi=1.2
+  - r-rsqlite=2.4
+  - r-readxl
+  - r-dplyr
+  - r-stringr
+  - r-lubridate
+  - r-purrr
+  - r-sf
+  - r-leaflet
+  - r-htmlwidgets
+  - r-tidyr
+  - pandoc

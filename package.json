@@ -1,0 +1,16 @@
+{
+  "name": "rerimss-informe-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Informe RERIMSS: tres mapas temporales de enfermedad renal por AGEB.",
+  "scripts": {
+    "setup:r": "bash scripts/setup-r.sh",
+    "setup:app": "bash scripts/setup-app.sh",
+    "build": "bash scripts/build.sh",
+    "dev": "bash scripts/start.sh",
+    "test": "bash scripts/test.sh",
+    "package": "python3 scripts/package.py",
+    "vendor": ".app-runtime/bin/python scripts/vendor.py"
+  },
+  "dependencies": {"leaflet": "1.9.4"}
+}
